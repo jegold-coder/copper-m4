@@ -270,4 +270,11 @@ export const copperTools = {
     }),
     execute: async ({ query }) => searchDocs(query),
   }),
+  // Module 4: hands the chat to the Refund agent (see ask.ts).
+  transfer_refund: tool({
+    description:
+      "Hands the chat to the Refund agent. Use it whenever the customer wants a refund, wants their money back, or asks about the status of a refund they asked for.",
+    inputSchema: z.object({}),
+    execute: async () => ({ transfer: "refund" as const }),
+  }),
 };

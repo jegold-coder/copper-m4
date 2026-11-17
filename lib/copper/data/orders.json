@@ -1,0 +1,46 @@
+{
+  "orders": [
+    {
+      "id": "ORD-1001",
+      "email": "jordan@example.com",
+      "item": "Copper Plus, monthly (1 month)",
+      "amountUsd": 7.99,
+      "daysAgo": 3
+    },
+    {
+      "id": "ORD-1002",
+      "email": "jordan@example.com",
+      "item": "Copper Notes (Brushed Copper)",
+      "amountUsd": 129,
+      "daysAgo": 10
+    },
+    {
+      "id": "ORD-1003",
+      "email": "jordan@example.com",
+      "item": "Copper Home (Polished Copper)",
+      "amountUsd": 149,
+      "daysAgo": 45
+    },
+    {
+      "id": "ORD-1004",
+      "email": "sam@example.com",
+      "item": "Copper Plus, annual (1 year)",
+      "amountUsd": 79,
+      "daysAgo": 6
+    },
+    {
+      "id": "ORD-1005",
+      "email": "sam@example.com",
+      "item": "Copper Plus, monthly (1 month)",
+      "amountUsd": 7.99,
+      "daysAgo": 20
+    },
+    {
+      "id": "ORD-1006",
+      "email": "sam@example.com",
+      "item": "Copper Home (Night Sky)",
+      "amountUsd": 149,
+      "daysAgo": 12
+    }
+  ]
+}

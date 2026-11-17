@@ -7,6 +7,7 @@
 import {
   ArrowLeftIcon,
   ArrowRightIcon,
+  ArrowRightLeftIcon,
   ArrowUpIcon,
   BrainIcon,
   MessageCircleIcon,
@@ -30,6 +31,9 @@ import { readLive } from "@/lib/ai/live";
 import { askCopper, type ChatMessage } from "@/lib/copper/assistant/ask";
 import { splitCitations } from "@/lib/copper/assistant/citations";
 import {
+  AGENT_NAMES,
+  AGENT_TOOLS,
+  type AgentId,
   type Progress,
   type ToolStep,
   TOOL_LABELS,
@@ -51,10 +55,13 @@ const WORKING: Progress = { steps: [], reply: "", status: "working" };
 export function AskCopper({
   aiConfigured,
   docked = false,
+  starters = STARTERS,
 }: {
   aiConfigured: boolean;
   /** Stays open beside the page, which remains clickable (the Support page). */
   docked?: boolean;
+  /** The questions offered as buttons. */
+  starters?: string[];
 }) {
   const [open, setOpen] = useState(docked);
   const [useTools, setUseTools] = useState(true);
@@ -111,10 +118,13 @@ export function AskCopper({
       ...all,
       [chat]: [...all[chat], { question, progress: WORKING }],
     }));
+    // Stay with whichever agent answered last (Copper, or the Refund agent).
+    const agent = turns.at(-1)?.progress.agent ?? "copper";
     try {
       const { progress } = await askCopper({
         messages,
         useTools: chat === "tools",
+        ...(agent !== "copper" && { agent }),
       });
       for await (const update of readLive(progress)) setProgress(update);
     } catch {
@@ -206,11 +216,11 @@ export function AskCopper({
                   <div className="space-y-2">
                     {turns.length === 0 && (
                       <p className="text-muted-foreground text-sm">
-                        Hi, I&apos;m Copper! Ask me about prices, totals or
-                        stock. Try one of these:
+                        Hi, I&apos;m Copper! Ask me about prices, totals, stock
+                        or refunds. Try one of these:
                       </p>
                     )}
-                    {STARTERS.map((starter) => (
+                    {starters.map((starter) => (
                       <button
                         key={starter}
                         type="button"
@@ -268,6 +278,11 @@ function Answer({
   useTools: boolean;
 }) {
   const { steps, reply, status } = progress;
+  // Who started this answer, and who is writing the reply (after any handoff).
+  const first = steps.find((s) => s.type === "handoff");
+  const startAgent: AgentId =
+    first?.type === "handoff" ? first.from : (progress.agent ?? "copper");
+  const agent: AgentId = progress.agent ?? "copper";
   const used = new Set(
     steps.filter((s): s is ToolStep => s.type === "tool").map((s) => s.name),
   );
@@ -289,11 +304,13 @@ function Answer({
           node={<WrenchIcon className="size-3" />}
           nodeClass="bg-muted-foreground"
           label={
-            useTools ? "Tools Copper can use" : "Tools given to Copper: none"
+            useTools
+              ? `Tools ${AGENT_NAMES[startAgent]} can use`
+              : "Tools given to Copper: none"
           }
         >
           <div className="flex flex-wrap gap-1.5">
-            {Object.keys(TOOL_LABELS).map((name) => (
+            {AGENT_TOOLS[startAgent].map((name) => (
               <span
                 key={name}
                 className={cn(
@@ -320,7 +337,34 @@ function Answer({
         </Station>
 
         {steps.map((step, i) =>
-          step.type === "thinking" ? (
+          step.type === "handoff" ? (
+            <Station
+              key={i}
+              node={<ArrowRightLeftIcon className="size-3" />}
+              nodeClass="bg-chart-5"
+              label="Handoff"
+            >
+              <div className="space-y-2">
+                <p className="bg-chart-5 w-fit rounded-md px-2 py-1 text-xs font-bold text-white">
+                  {AGENT_NAMES[step.from]} → {AGENT_NAMES[step.to]}
+                </p>
+                <div className="flex flex-wrap gap-1.5">
+                  {AGENT_TOOLS[step.to].map((name) => (
+                    <span
+                      key={name}
+                      className="bg-background text-muted-foreground rounded-md px-2 py-0.5 font-mono text-xs"
+                    >
+                      {name}
+                    </span>
+                  ))}
+                </div>
+                <p className="text-muted-foreground text-xs">
+                  {AGENT_NAMES[step.to]} has its own instructions and its own
+                  tools.
+                </p>
+              </div>
+            </Station>
+          ) : step.type === "thinking" ? (
             <Station
               key={i}
               node={<BrainIcon className="size-3" />}
@@ -376,7 +420,9 @@ function Answer({
 
       {(reply || !working) && (
         <div className="bg-card ml-2 rounded-2xl rounded-tl-sm border p-4 shadow-xs">
-          <p className="text-primary mb-1 text-xs font-bold">Copper</p>
+          <p className="text-primary mb-1 text-xs font-bold">
+            {AGENT_NAMES[agent]}
+          </p>
           {!useTools && (
             <div className="border-chart-3 bg-chart-3/10 mb-3 rounded-lg border p-3 text-xs">
               <p className="flex items-center gap-1.5 font-bold">
@@ -633,6 +679,47 @@ function ToolOutput({ name, output }: { name: string; output: any }) {
       </div>
     );
   }
+  if (name === "get_orders" && output?.status)
+    return output.status === "no_orders" ? (
+      <p className="text-xs">No orders found for {output.email}.</p>
+    ) : (
+      <div className="space-y-2 text-xs">
+        {output.orders.map((o: any) => (
+          <div key={o.id} className="flex items-start justify-between gap-2">
+            <div>
+              <p className="font-medium">
+                {o.id} · {o.item}
+              </p>
+              <p className="text-muted-foreground">
+                {formatUsd(o.amountUsd)} · {o.daysAgo} days ago
+              </p>
+            </div>
+            {o.refund && <RefundPill status={o.refund.status} />}
+          </div>
+        ))}
+      </div>
+    );
+  if (name === "request_refund" && output?.status)
+    return (
+      <div className="space-y-1.5 text-xs">
+        <RefundPill
+          status={
+            output.status === "pending_approval"
+              ? "pending"
+              : output.status === "refunded"
+                ? "refunded"
+                : output.status === "already_rejected"
+                  ? "rejected"
+                  : output.status === "already_pending"
+                    ? "pending"
+                    : output.status === "already_refunded"
+                      ? "refunded"
+                      : "none"
+          }
+        />
+        <p>{output.message}</p>
+      </div>
+    );
   if (name === "search_docs" && output?.matches)
     return (
       <ol className="space-y-2 text-xs">
@@ -686,6 +773,18 @@ function StockPill({
   return (
     <Pill className="bg-chart-3 text-white">Back-ordered until {date}</Pill>
   );
+}
+
+function RefundPill({ status }: { status: string }) {
+  if (status === "refunded")
+    return <Pill className="bg-accent text-white">Refunded</Pill>;
+  if (status === "pending")
+    return (
+      <Pill className="bg-chart-4 text-chart-5">Waiting for a person</Pill>
+    );
+  if (status === "rejected")
+    return <Pill className="bg-chart-3 text-white">Declined</Pill>;
+  return <Pill className="bg-muted text-muted-foreground">No refund</Pill>;
 }
 
 function Pill({

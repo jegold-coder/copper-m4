@@ -139,3 +139,40 @@ second agent, and a person approving the large ones.
 |---|---|---|
 | Page | `app/support/page.tsx` | The "Refund Console" title and nothing else yet, linked from the header as Support |
 | Chat panel | `components/copper/ask-copper.tsx` | With the `docked` prop it starts open and the page beside it stays clickable. It is the same single agent and tools as on the home page |
+
+## Module 4: Refund agent and Refund Console
+
+**Summary:** Copper hands refund requests to a second agent, the Refund agent,
+with its own instructions and tools. The app's code decides each refund against
+an auto-refund limit ($50 by default). Larger ones wait for a person to approve
+or reject them in the Refund Console on the Support page, and the agent tells
+the customer what happened and why. The full requirements are in
+`specs/module-4/spec.md`.
+
+| Piece | Where | What it does |
+|---|---|---|
+| Refund rule | `lib/copper/refunds/store.ts` | `requestRefund()` applies the limit and the 30-day return window, refuses a second refund for the same order, and returns a plain-English `message`. The store (limit and refunds) lives in memory on `globalThis`, seeded from `lib/copper/data/orders.json` |
+| Console actions | `lib/copper/refunds/actions.ts` | Server Actions `readConsole`, `saveLimit` and `decide` (approve or reject). Only the console calls these; the chat cannot |
+| Refund agent | `lib/copper/assistant/refund-instructions.ts`, `refund-tools.ts` | Instructions plus `get_orders`, `request_refund` and `transfer_support`. `request_refund` has no approval input, so nothing a customer says can approve a refund |
+| Copper | `lib/copper/assistant/tools.ts`, `instructions.ts` | Keeps its five tools and adds `transfer_refund`; the instructions send refund requests to it |
+| Handoff | `lib/copper/assistant/ask.ts` | Streams the active agent, stops after its handoff tool, records a `handoff` step and streams the next agent on the same conversation. At most 2 handoffs per question. The final `progress.agent` is sent back by the panel so the chat stays with that agent |
+| Console UI | `components/copper/refund-console.tsx`, `app/support/page.tsx` | Limit control, the approval queue, decided refunds and the demo orders. It polls `readConsole` every 2 seconds |
+| Chat panel | `components/copper/ask-copper.tsx` | Shows the Handoff step, each agent's own tool list, order and refund cards, and the active agent's name on the reply |
+| AI calls | `callStream` in `lib/ai/call.ts`, `{ module: 4, feature: "refund-agent" }` | One logged stream per Refund agent turn; Copper stays `{ module: 2, feature: "ask-copper" }` |
+
+**Data flow:** Customer message → `askCopper` → Copper → `transfer_refund` →
+Refund agent → `get_orders` / `request_refund` → rule in `store.ts` → refunded
+or pending → reply with the reason. Console: poll → `readConsole`; Approve or
+Reject → `decide` → store → the agent reports it on the next question.
+
+**Decisions and trade-offs:** The rule is code, not a prompt, because a model
+can be talked into things and a function cannot. Handoff is one Server Action
+looping over agents instead of two endpoints, so the panel keeps one stream and
+shows both agents on one rail. In-memory storage instead of a database keeps
+the demo to zero new services.
+
+**Risks and open questions:** Memory resets on restart, and Vercel may run more
+than one server instance, so a refund can look missing; move `store.ts` to a
+database to fix it. There is no sign-in, so orders are found by typed email and
+anyone can open the console. The agent only learns of a person's decision when
+the customer asks for an update.

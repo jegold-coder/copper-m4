@@ -167,7 +167,12 @@ export async function askCopper({
       }
       progress.status = "done";
       if (!progress.reply.trim()) progress.reply = SORRY;
-    } catch {
+    } catch (error) {
+      // The panel only says "something went wrong"; the real reason goes to the server log.
+      console.error(
+        "[ask-copper] failed:",
+        error instanceof Error ? error.message : String(error),
+      );
       progress.status = "error";
       if (!progress.reply.trim()) progress.reply = SORRY;
     }
